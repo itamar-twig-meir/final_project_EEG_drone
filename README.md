@@ -1,1 +1,1 @@
-# final-_project_EEG_drone
+# final_project_EEG_drone
