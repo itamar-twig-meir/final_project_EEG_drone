@@ -11,7 +11,7 @@ import moabb
 from moabb.datasets import PhysionetMI
 from moabb.paradigms import MotorImagery
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-import plt
+import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from sklearn.utils import class_weight
 
@@ -68,7 +68,6 @@ def format_data_for_model(X_moabb, labels_moabb, num_of_time_window=6):
 
     X_scaled = X_scaled[:, :valid_timepoints, :]
 
-    X_final = X_scaled.reshape(samples, num_of_time_window, readings_per_window, channels)
     X_final = X_scaled.reshape(samples, num_of_time_window, readings_per_window, channels)
 
     valid_indices = [i for i, label in enumerate(labels_moabb) if label in physionet_to_drone_map]
@@ -238,6 +237,8 @@ def train_and_test_single_subject(model):
     print("\n--- Single Subject Training ---")
     try:
         subject_id = int(input("Enter the Subject ID you want to train and test on (e.g., 1): ").strip())
+        if subject_id == 88:
+            print("subject id cant be 88. choose again")
     except ValueError:
         print("Invalid input. Please enter a valid number.")
         return
@@ -340,11 +341,11 @@ def build_eeg_drone_model_1(input_shape = (6, 80, 14)):
 
     model.add(tf.keras.Input(shape=input_shape,name='eeg_input'))
 
-    model.add(TimeDistributed(Conv1D(filters=32, kernel_size=8, padding='same'), name='td_conv_1'))
+    model.add(TimeDistributed(Conv1D(filters=256, kernel_size=8, padding='same'), name='td_conv_1'))
     model.add(TimeDistributed(BatchNormalization(), name='td_batch_norm_1'))
     model.add(TimeDistributed(Activation('elu'), name='td_relu_1'))
 
-    model.add(TimeDistributed(Conv1D(filters=64, kernel_size=8, padding='same'), name='td_conv_2'))
+    model.add(TimeDistributed(Conv1D(filters=128, kernel_size=8, padding='same'), name='td_conv_2'))
     model.add(TimeDistributed(BatchNormalization(), name='td_batch_norm_2'))
     model.add(TimeDistributed(Activation('elu'), name='td_relu_2'))
     model.add(TimeDistributed(MaxPooling1D(pool_size=2), name='td_max_pool_2'))
@@ -484,8 +485,9 @@ while True:
     print("2. build a basic model(.keras)")
     print("3. Train Model on DB (Subjects 1-99)")
     print("4. Test Model on Unseen Humans (Subjects 100-109)")
-    print("5. save model")
-    print("6. Exit")
+    print("5. Test Model on one subject")
+    print("6. save model")
+    print("7. Exit")
 
     choice = input("\nSelect an option (1-6): ").strip()
 
@@ -511,11 +513,14 @@ while True:
         test_on_unseen_subjects(current_model)
 
     elif choice == '5':
+        train_and_test_single_subject(current_model)
+
+    elif choice == '6':
         print("saving model.")
         save_model_to_keras(current_model)
 
 
-    elif choice == '6':
+    elif choice == '7':
         print("Exiting System. Goodbye!")
         break
 
