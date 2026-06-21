@@ -21,7 +21,8 @@ while True:
     print("5. Add data to training pool")
     print("6. start real time use")
     print("7. Configure Preprocessing")
-    print("8. Exit")
+    print("8. Test single random sample")
+    print("9. Exit")
 
 
     choice = input("\nSelect an option (1-8): ")
@@ -88,8 +89,15 @@ while True:
         USE_ICA = (ica_choice == 'yes')
         print(f"Settings updated: Normalization={NORMALIZATION_MODE}, ICA={USE_ICA}")
 
-    #exit loop
+    # test single sample
     elif choice == '8':
+        if current_model is None:
+            print("Error: No model loaded/trained.")
+            continue
+        test_single_sample(current_model)
+
+    #exit loop
+    elif choice == '9':
         print("Exiting EEG System. Goodbye!")
         break
 

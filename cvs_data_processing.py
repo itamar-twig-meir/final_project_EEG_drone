@@ -26,6 +26,7 @@ RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
 tf.random.set_seed(RANDOM_SEED)
 
+global_test_data = None
 global_used_training_data = []
 global_seen_hashes = set()
 global_scaler = None
@@ -108,7 +109,7 @@ def apply_ica_to_csv(csv_eeg_data, sfreq=128):
 
 
 def make_total_sample_answer_couples(eeg_data, labels, num_of_readings_in_thought=256,
-                                      num_of_time_window=4, flat=False, overlap=0.75):
+                                      num_of_time_window=2, flat=False, overlap=0.75):
 
     num_of_single_readings = eeg_data.shape[0]
     step = int(num_of_readings_in_thought * (1 - overlap))
@@ -145,7 +146,6 @@ def make_total_sample_answer_couples(eeg_data, labels, num_of_readings_in_though
     print(f"Total shape of X: {np.array(valid_X).shape}")
     print(f"Total shape of Y: {np.array(valid_Y).shape}")
     return np.array(valid_X), np.array(valid_Y)
-
 
 def split_data_and_class_into_train_test_validation(X_total, Y_total, train_ratio=0.8, test_ratio=0.1,
                                                     validation_ratio=0.1):
@@ -192,18 +192,25 @@ def split_data_and_class_into_train_test_validation(X_total, Y_total, train_rati
     is_4d = X_train.ndim == 4
 
     if Config.normalization_mode == 'general':
-        # Apply normalization to the entire dataset as one block
+        # 1. Instantiate the scaler
         scaler = StandardScaler()
-        # Flatten all dimensions except the last one (if we want to keep features)
-        # or flatten everything for absolute general normalization
+
+        # 2. Fit: We use reshape(-1, 1) to treat every single value
+        # in the 4D array as an individual data point for the global distribution.
+        # We do this directly on X_train to avoid creating a new huge variable.
         scaler.fit(X_train.reshape(-1, 1))
 
-        X_train = scaler.transform(X_train.reshape(-1, 1)).reshape(X_train.shape)
+        # 3. Transform: Apply the scaling and reshape back to original dimensions
+        # Using the original shape directly keeps the structure intact.
+        original_shape = X_train.shape
+        X_train = scaler.transform(X_train.reshape(-1, 1)).reshape(original_shape)
+
+        # Transform val and test using the same global scaler
         X_val = scaler.transform(X_val.reshape(-1, 1)).reshape(X_val.shape)
         X_test = scaler.transform(X_test.reshape(-1, 1)).reshape(X_test.shape)
 
         global_scaler = scaler
-        print("Fitted general (global) scaler.")
+        print("Fitted general (global) scaler across all dimensions.")
 
     else:
         # Per-electrode (channel) scaling
@@ -411,6 +418,8 @@ def train_model_on_pool(model):
         print("No predictions reached 90% confidence.")
 
     plot_confusion_matrix(Y_test, y_pred_probs, title="Confusion Matrix: Pooled Test Data")
+    global global_test_data
+    global_test_data = (X_test, Y_test)
 
     save_choice = input("\nTraining complete. Save model? (yes/no): ").strip().lower()
     if save_choice == "yes":
@@ -419,4 +428,44 @@ def train_model_on_pool(model):
         print(f"Model saved as {model_name}.keras")
 
 
+def test_single_sample(model):
+    global global_test_data
 
+    if global_test_data is None or model is None:
+        print("Error: No test data available. Please train a model first.")
+        return
+
+    X_test, Y_test = global_test_data
+
+    # Select a random sample
+    idx = np.random.randint(0, len(X_test))
+    sample = X_test[idx:idx + 1]  # Keep batch dimension
+    true_label_one_hot = Y_test[idx]
+
+    # Get prediction from model
+    pred_probs = model.predict(sample, verbose=0)[0]
+    pred_class = np.argmax(pred_probs)
+    true_class = np.argmax(true_label_one_hot)
+
+    # Get label names
+    class_names = list(label_dictionary.keys())
+    true_label_name = class_names[true_class]
+    pred_label_name = class_names[pred_class]
+    pred_confidence = pred_probs[pred_class] * 100
+
+    # Print first line of sample (first timestep, all channels)
+    if sample.ndim == 4:
+        first_line = sample[0, 0, :, :]  # (readings_per_window, channels)
+    else:
+        first_line = sample[0, :, :]  # (readings, channels)
+
+    print(f"\n--- Single Sample Test ---")
+    print(f"Sample index: {idx}")
+    print(f"First line of sample:\n{first_line}")
+    print(f"\nTrue Label:      {true_label_name}")
+    print(f"Predicted Label: {pred_label_name}")
+    print(f"Confidence:      {pred_confidence:.2f}%")
+    if true_label_name == pred_label_name:
+        print("✓ Correct prediction!")
+    else:
+        print("✗ Incorrect prediction.")
